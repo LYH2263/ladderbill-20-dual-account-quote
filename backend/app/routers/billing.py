@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from app.schemas.billing import BillRequest, CompareRequest
-from app.services.billing_service import BillingService
+from app.schemas.billing import BillRequest, CompareRequest, DualRequest
+from app.services.billing_service import BillingService, DualInputError
 
 router = APIRouter(tags=["billing"])
 
@@ -16,3 +16,12 @@ def post_bill(body: BillRequest):
 def post_compare(body: CompareRequest):
     with BillingService() as svc:
         return svc.run_compare(body.kwh, body.persist)
+
+
+@router.post("/dual")
+def post_dual(body: DualRequest):
+    with BillingService() as svc:
+        try:
+            return svc.run_dual(body.left, body.right, body.persist)
+        except DualInputError as e:
+            raise HTTPException(e.status_code, e.detail)

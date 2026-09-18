@@ -13,6 +13,19 @@ class CompareRequest(BaseModel):
     persist: bool = False
 
 
+class DualSide(BaseModel):
+    # kwh validated in the service so the error can name the failing side
+    account_id: int
+    kwh: float
+    peak: bool = False
+
+
+class DualRequest(BaseModel):
+    left: DualSide
+    right: DualSide
+    persist: bool = False
+
+
 class CalcRunOut(BaseModel):
     id: int
     kind: str
