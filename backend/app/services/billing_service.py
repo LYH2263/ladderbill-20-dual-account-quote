@@ -1,6 +1,8 @@
 import json
+import math
 
 from app.db import connect
+from app.engines.pair_compare import compare_pair
 from app.engines.peak_compare import compare_plain_vs_peak
 from app.engines.tier_progressive import calc_bill
 from app.repositories import accounts as accounts_repo
@@ -8,6 +10,17 @@ from app.repositories import readings as readings_repo
 from app.repositories import runs as runs_repo
 from app.repositories import settings as settings_repo
 from app.repositories import tiers as tiers_repo
+
+
+class SideError(Exception):
+    """One side of a pair trial failed validation; carries the failing side tag."""
+
+    def __init__(self, side: str, error: str, message: str, status: int = 400):
+        super().__init__(message)
+        self.side = side
+        self.error = error
+        self.message = message
+        self.status = status
 
 
 class BillingService:
@@ -65,6 +78,43 @@ class BillingService:
         if persist:
             run_id = runs_repo.insert(self._conn, "compare", {"kwh": kwh}, result, None)
         return {"run_id": run_id, **result}
+
+    def run_pair(self, left, right, persist: bool):
+        accounts = {}
+        for key, side in (("left", left), ("right", right)):
+            if not math.isfinite(side.kwh) or side.kwh < 0:
+                raise SideError(key, "invalid_kwh", f"电量非法：{side.kwh}")
+            acct = accounts_repo.get(self._conn, side.account_id)
+            if not acct:
+                raise SideError(key, "account_not_found", f"户号 {side.account_id} 不存在", 404)
+            accounts[key] = acct
+        tiers = tiers_repo.as_calc_rows(self._conn)
+        pf = settings_repo.peak_factor(self._conn)
+        result = compare_pair(
+            {"kwh": left.kwh, "peak": left.peak},
+            {"kwh": right.kwh, "peak": right.peak},
+            tiers,
+            pf,
+        )
+        for key, side in (("left", left), ("right", right)):
+            result[key].update(
+                {
+                    "account_id": accounts[key]["id"],
+                    "account_name": accounts[key]["name"],
+                    "peak": side.peak,
+                    "run_id": None,
+                }
+            )
+        if persist:
+            for key, side in (("left", left), ("right", right)):
+                result[key]["run_id"] = runs_repo.insert(
+                    self._conn,
+                    "pair_bill",
+                    {"kwh": side.kwh, "peak": side.peak, "account_id": side.account_id, "side": key},
+                    result[key],
+                    side.account_id,
+                )
+        return {"persist": persist, "delta": result["delta"], "left": result["left"], "right": result["right"]}
 
     def list_history(self, limit: int = 50):
         return runs_repo.list_recent(self._conn, limit)

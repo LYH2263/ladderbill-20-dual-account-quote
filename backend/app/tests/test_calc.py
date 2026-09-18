@@ -1,5 +1,6 @@
 import pytest
 
+from app.engines.pair_compare import compare_pair
 from app.engines.peak_compare import compare_plain_vs_peak
 from app.engines.tier_progressive import calc_bill
 
@@ -35,3 +36,25 @@ def test_compare_delta():
 def test_negative_kwh_raises():
     with pytest.raises(ValueError):
         calc_bill(-1, TIERS, 1.0)
+
+
+def test_pair_delta_right_minus_left():
+    r = compare_pair({"kwh": 400, "peak": False}, {"kwh": 400, "peak": True}, TIERS, 1.2)
+    assert r["left"]["total"] == 258.00
+    assert r["right"]["total"] == 309.60
+    assert r["delta"] == 51.60
+    assert len(r["left"]["segments"]) == 3
+    assert len(r["right"]["segments"]) == 3
+
+
+def test_pair_delta_negative_when_right_cheaper():
+    r = compare_pair({"kwh": 400, "peak": True}, {"kwh": 120, "peak": False}, TIERS, 1.2)
+    assert r["left"]["total"] == 309.60
+    assert r["right"]["total"] == 62.40
+    assert r["delta"] == -247.20
+
+
+def test_pair_peak_flag_scales_only_that_side():
+    r = compare_pair({"kwh": 120, "peak": False}, {"kwh": 120, "peak": True}, TIERS, 1.2)
+    assert r["left"]["peak_factor"] == 1.0
+    assert r["right"]["peak_factor"] == 1.2

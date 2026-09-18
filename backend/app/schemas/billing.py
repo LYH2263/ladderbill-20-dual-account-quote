@@ -13,6 +13,18 @@ class CompareRequest(BaseModel):
     persist: bool = False
 
 
+class PairSide(BaseModel):
+    account_id: int
+    kwh: float
+    peak: bool = False
+
+
+class PairBillRequest(BaseModel):
+    left: PairSide
+    right: PairSide
+    persist: bool = False
+
+
 class CalcRunOut(BaseModel):
     id: int
     kind: str
